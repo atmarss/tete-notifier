@@ -17,6 +17,10 @@ services:
       - ENABLE_DOOR_NOTIFY=true #车门打开通知开关，默认true
       - DOOR_NOTIFY_COOLDOWN_SECONDS=60 #开门通知冷却时间（秒），默认60
       - DOOR_NOTIFY_P_DURATION_SECONDS=300 #持续P档多久后开门才通知（秒），默认300，避免刚停车开门误报
+      - ENABLE_FULL_CHARGE_NOTIFY=true #充满电通知开关，默认true（关闭则回退到原充电完成通知）
+      - ENABLE_UNLOCK_NOTIFY=true #忘记锁车通知开关，默认true
+      - UNLOCK_NOTIFY_DELAY_SECONDS=120 #未锁持续多久后复核（秒），默认120
+      - UNLOCK_NOTIFY_COOLDOWN_SECONDS=600 #忘锁通知冷却时间（秒），默认600
     depends_on:
       - database
       - mosquitto

@@ -31,31 +31,43 @@ type Config struct {
 	DoorNotifyEnabled      bool // 是否开启车门打开通知
 	DoorNotifyCooldownSec  int  // 开门通知冷却时间，避免短时间内重复推送
 	DoorNotifyPDurationSec int  // 需持续 P 档多久后开门才通知（秒），避免刚停车正常下车误报
+
+	// 充满电通知：Complete 状态单独推送"已充满"，关闭时回退到原"充电完成"通知
+	FullChargeNotifyEnabled bool
+
+	// 忘记锁车通知：长时间 P 档停放且未锁时推送
+	UnlockNotifyEnabled     bool
+	UnlockNotifyDelaySec    int // 检测到未锁后持续多久复核（秒）
+	UnlockNotifyCooldownSec int // 未锁通知冷却时间（秒）
 }
 
 func Load() *Config {
 	_ = godotenv.Load()
 
 	return &Config{
-		APIToken:               os.Getenv("API_TOKEN"),
-		DBHost:                 getEnv("DATABASE_HOST", "database"),
-		DBUser:                 getEnv("DATABASE_USER", "teslamate"),
-		DBPass:                 os.Getenv("DATABASE_PASS"),
-		DBName:                 getEnv("DATABASE_NAME", "teslamate"),
-		DBPort:                 mustInt(os.Getenv("DATABASE_PORT"), 5432),
-		MQTTHost:               getEnv("MQTT_HOST", "mosquitto"),
-		MQTTPort:               mustInt(os.Getenv("MQTT_PORT"), 1883),
-		MQTTUser:               os.Getenv("MQTT_USER"),
-		MQTTPass:               os.Getenv("MQTT_PASS"),
-		CarID:                  mustInt(os.Getenv("CAR_ID"), 1),
-		LogLevel:               getEnv("LOG_LEVEL", "info"),
-		PushDebounceSec:        mustInt(os.Getenv("PUSH_DEBOUNCE_SECONDS"), 5),
-		StartNotifyEnabled:     mustBool(os.Getenv("ENABLE_START_NOTIFY"), true),
-		StartNotifyCooldownSec: mustInt(os.Getenv("START_NOTIFY_COOLDOWN_SECONDS"), 60),
-		StartConfirmSeconds:    mustInt(os.Getenv("START_CONFIRM_SECONDS"), 10),
-		DoorNotifyEnabled:      mustBool(os.Getenv("ENABLE_DOOR_NOTIFY"), true),
-		DoorNotifyCooldownSec:  mustInt(os.Getenv("DOOR_NOTIFY_COOLDOWN_SECONDS"), 60),
-		DoorNotifyPDurationSec: mustInt(os.Getenv("DOOR_NOTIFY_P_DURATION_SECONDS"), 300),
+		APIToken:                os.Getenv("API_TOKEN"),
+		DBHost:                  getEnv("DATABASE_HOST", "database"),
+		DBUser:                  getEnv("DATABASE_USER", "teslamate"),
+		DBPass:                  os.Getenv("DATABASE_PASS"),
+		DBName:                  getEnv("DATABASE_NAME", "teslamate"),
+		DBPort:                  mustInt(os.Getenv("DATABASE_PORT"), 5432),
+		MQTTHost:                getEnv("MQTT_HOST", "mosquitto"),
+		MQTTPort:                mustInt(os.Getenv("MQTT_PORT"), 1883),
+		MQTTUser:                os.Getenv("MQTT_USER"),
+		MQTTPass:                os.Getenv("MQTT_PASS"),
+		CarID:                   mustInt(os.Getenv("CAR_ID"), 1),
+		LogLevel:                getEnv("LOG_LEVEL", "info"),
+		PushDebounceSec:         mustInt(os.Getenv("PUSH_DEBOUNCE_SECONDS"), 5),
+		StartNotifyEnabled:      mustBool(os.Getenv("ENABLE_START_NOTIFY"), true),
+		StartNotifyCooldownSec:  mustInt(os.Getenv("START_NOTIFY_COOLDOWN_SECONDS"), 60),
+		StartConfirmSeconds:     mustInt(os.Getenv("START_CONFIRM_SECONDS"), 10),
+		DoorNotifyEnabled:       mustBool(os.Getenv("ENABLE_DOOR_NOTIFY"), true),
+		DoorNotifyCooldownSec:   mustInt(os.Getenv("DOOR_NOTIFY_COOLDOWN_SECONDS"), 60),
+		DoorNotifyPDurationSec:  mustInt(os.Getenv("DOOR_NOTIFY_P_DURATION_SECONDS"), 300),
+		FullChargeNotifyEnabled: mustBool(os.Getenv("ENABLE_FULL_CHARGE_NOTIFY"), true),
+		UnlockNotifyEnabled:     mustBool(os.Getenv("ENABLE_UNLOCK_NOTIFY"), true),
+		UnlockNotifyDelaySec:    mustInt(os.Getenv("UNLOCK_NOTIFY_DELAY_SECONDS"), 120),
+		UnlockNotifyCooldownSec: mustInt(os.Getenv("UNLOCK_NOTIFY_COOLDOWN_SECONDS"), 600),
 	}
 }
 

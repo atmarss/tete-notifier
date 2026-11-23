@@ -15,6 +15,8 @@
 - 行程、充电信息自动推送通知
 - 车辆启动通知：挡位由 P 挡切换到 D 挡，且持续保持 D 挡一段时间（默认 10 秒）后推送，避免误触发
 - 车门打开通知：车辆**长时间处于 P 档停放**后，主驾车门由关闭变为打开时推送（附带当前电量与表显续航）。刚停车时正常下车开门不推送，避免误报；P 档持续时间阈值可通过 `DOOR_NOTIFY_P_DURATION_SECONDS` 调整（默认 300 秒）
+- 充满电通知：充电状态变为 `Complete` 时单独推送"🔋 已充满 ✅"（含充入电量、类型、表显与电量变化）。开关 `ENABLE_FULL_CHARGE_NOTIFY` 关闭时回退到原来的"充电完成"通知
+- 忘记锁车通知：车辆长时间 P 档停放且未锁时，延时复核后仍没锁则推送提醒（上锁或开走会自动取消）；延时与冷却可通过 `UNLOCK_NOTIFY_DELAY_SECONDS` / `UNLOCK_NOTIFY_COOLDOWN_SECONDS` 调整
 - 包含行驶时间、距离、电量变化等详细信息
 - 集成到现有的 Teslamate docker-compose 环境中
 - 轻量级，资源占用低
@@ -54,6 +56,10 @@
          - ENABLE_DOOR_NOTIFY=true #车门打开通知开关，默认true
          - DOOR_NOTIFY_COOLDOWN_SECONDS=60 #开门通知冷却时间（秒），默认60
          - DOOR_NOTIFY_P_DURATION_SECONDS=300 #持续P档多久后开门才通知（秒），默认300，避免刚停车开门误报
+         - ENABLE_FULL_CHARGE_NOTIFY=true #充满电通知开关，默认true
+         - ENABLE_UNLOCK_NOTIFY=true #忘记锁车通知开关，默认true
+         - UNLOCK_NOTIFY_DELAY_SECONDS=120 #未锁持续多久后复核（秒），默认120
+         - UNLOCK_NOTIFY_COOLDOWN_SECONDS=600 #忘锁通知冷却时间（秒），默认600
        depends_on:
          - database #依赖数据库服务，同上HOST
          - mosquitto #依赖MQTT服务，同上HOST
@@ -79,6 +85,10 @@
    | ENABLE_DOOR_NOTIFY | 车门打开时是否推送通知 | 否 | true |
    | DOOR_NOTIFY_COOLDOWN_SECONDS | 开门通知冷却时间（秒），避免重复推送 | 否 | 60 |
    | DOOR_NOTIFY_P_DURATION_SECONDS | 需持续 P 档多久后开门才通知（秒），避免刚停车正常下车误报 | 否 | 300 |
+   | ENABLE_FULL_CHARGE_NOTIFY | 充满电时是否单独推送"已充满"通知，关闭则回退到原"充电完成" | 否 | true |
+   | ENABLE_UNLOCK_NOTIFY | 长时间 P 档停放且未锁时是否推送忘记锁车提醒 | 否 | true |
+   | UNLOCK_NOTIFY_DELAY_SECONDS | 检测到未锁后持续多久复核（秒） | 否 | 120 |
+   | UNLOCK_NOTIFY_COOLDOWN_SECONDS | 忘锁通知冷却时间（秒），避免重复推送 | 否 | 600 |
 
 3. **启动服务**
 

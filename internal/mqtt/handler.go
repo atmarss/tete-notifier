@@ -33,15 +33,17 @@ type Client struct {
 	lastState          string
 	chargeLimitSoc     int
 
-	lastStartNotifyTime time.Time // 上次启动通知时间，用于冷却控制
-	lastDoorNotifyTime  time.Time // 上次车门通知时间，用于冷却控制
-	pGearSince          time.Time // 进入 P 档的时间，用于判断"长时间停放"
+	lastStartNotifyTime  time.Time // 上次启动通知时间，用于冷却控制
+	lastDoorNotifyTime   time.Time // 上次车门通知时间，用于冷却控制
+	lastUnlockNotifyTime time.Time // 上次忘记锁车通知时间，用于冷却控制
+	pGearSince           time.Time // 进入 P 档的时间，用于判断"长时间停放"
 
 	mu                sync.Mutex
 	retryMu           sync.Mutex // 单独保护重试计数，避免与 c.mu 死锁
 	debounceTimer     *time.Timer
 	stateSettleTimer  *time.Timer
 	startConfirmTimer *time.Timer // P->D 后确认 10 秒仍为 D 的计时器
+	unlockCheckTimer  *time.Timer // 未锁状态延时复核的计时器
 
 	retryCountDrive  int
 	retryCountCharge int
@@ -161,6 +163,11 @@ func (c *Client) messageHandler(client mqtt.Client, msg mqtt.Message) {
 			}
 		} else {
 			c.pGearSince = time.Time{}
+			// 离开 P 档（车辆开走）：取消未锁复核计时器
+			if c.unlockCheckTimer != nil {
+				c.unlockCheckTimer.Stop()
+				c.unlockCheckTimer = nil
+			}
 		}
 		// 车辆启动判定：P 档 -> D 档后，启动确认计时器
 		if prev == "P" && payload == "D" {
@@ -213,6 +220,17 @@ func (c *Client) messageHandler(client mqtt.Client, msg mqtt.Message) {
 		if c.lastLocked != val {
 			c.lastLocked = val
 			isDrive = true
+		}
+		if val {
+			// 已上锁：取消未锁复核计时器
+			if c.unlockCheckTimer != nil {
+				c.unlockCheckTimer.Stop()
+				c.unlockCheckTimer = nil
+				log.Println("[锁车检查] 车辆已上锁，取消未锁复核")
+			}
+		} else {
+			// 未锁：安排延时复核，到时仍为长时间 P 档且未锁才提醒
+			c.scheduleUnlockCheckLocked()
 		}
 		c.mu.Unlock()
 
@@ -321,6 +339,92 @@ func (c *Client) confirmVehicleStart() {
 	}()
 }
 
+// scheduleUnlockCheckLocked 安排一次未锁状态复核。调用者需持有 c.mu。
+func (c *Client) scheduleUnlockCheckLocked() {
+	if !c.cfg.UnlockNotifyEnabled {
+		return
+	}
+	delay := c.cfg.UnlockNotifyDelaySec
+	if delay <= 0 {
+		delay = 120
+	}
+	if c.unlockCheckTimer != nil {
+		c.unlockCheckTimer.Stop()
+	}
+	log.Printf("[锁车检查] 检测到车辆未锁，%d 秒后复核...", delay)
+	c.unlockCheckTimer = time.AfterFunc(time.Duration(delay)*time.Second, c.confirmUnlockReminder)
+}
+
+// confirmUnlockReminder 延时复核：长时间 P 档停放且仍未锁才推送忘记锁车提醒。
+func (c *Client) confirmUnlockReminder() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[锁车检查] 崩溃: %v\n%s", r, string(debug.Stack()))
+		}
+	}()
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.unlockCheckTimer = nil
+
+	if !c.cfg.UnlockNotifyEnabled {
+		return
+	}
+	if c.lastLocked {
+		log.Println("[锁车检查] 复核时车辆已上锁，跳过")
+		return
+	}
+
+	// 必须是长时间 P 档停放：刚停车时人还在下车，不打扰
+	pDuration := time.Duration(0)
+	if !c.pGearSince.IsZero() {
+		pDuration = time.Since(c.pGearSince)
+	}
+	if c.lastShiftState != "P" {
+		log.Printf("[锁车检查] 复核时档位为 %s（非 P），跳过", c.lastShiftState)
+		return
+	}
+	if pDuration < time.Duration(c.cfg.DoorNotifyPDurationSec)*time.Second {
+		// 还在长时间 P 档的等待期内：未锁状态还在持续，过一段时间再复核
+		log.Printf("[锁车检查] P 档仅持续 %.0fs（需 %ds），未锁仍在持续，稍后复核",
+			pDuration.Seconds(), c.cfg.DoorNotifyPDurationSec)
+		c.scheduleUnlockCheckLocked()
+		return
+	}
+
+	now := time.Now()
+	if !c.lastUnlockNotifyTime.IsZero() &&
+		now.Sub(c.lastUnlockNotifyTime) < time.Duration(c.cfg.UnlockNotifyCooldownSec)*time.Second {
+		log.Printf("[锁车通知] 冷却期内跳过推送 (距上次 %.0fs)",
+			now.Sub(c.lastUnlockNotifyTime).Seconds())
+		return
+	}
+	c.lastUnlockNotifyTime = now
+
+	content := fmt.Sprintf(`时间: %s
+已停放: %.0f 分钟
+当前电量: %.0f%%
+当前表显: %.1f km
+提醒: 车辆长时间停放且未上锁，请确认是否忘记锁车`,
+		now.Local().Format("15:04"),
+		pDuration.Minutes(),
+		c.lastBatteryLevel,
+		c.lastIdealRangeKM,
+	)
+	title := fmt.Sprintf("🔓 %s 可能忘记锁车 🔓", c.carName)
+
+	log.Printf("🔓 [锁车检查] 长时间 P 档未锁，推送提醒")
+
+	go func() {
+		if err := notifier.SendNotification(c.cfg.APIToken, title, content); err != nil {
+			log.Printf("❌ 忘锁通知推送失败: %v", err)
+		} else {
+			log.Println("✅ 忘锁通知已推送")
+		}
+	}()
+}
+
 // processDoorOpen 发送车门打开通知，包含冷却控制。
 func (c *Client) processDoorOpen() {
 	defer func() {
@@ -387,8 +491,11 @@ func (c *Client) checkChargingCondition(state string) {
 	switch state {
 	case "Starting":
 		c.processChargeStart()
-	case "Stopped", "Complete", "Disconnected":
-		c.processChargeEnd()
+	case "Complete":
+		// 充满电单独推送"已充满"通知；关闭开关时回退到原"充电完成"通知
+		c.processChargeFinish(true)
+	case "Stopped", "Disconnected":
+		c.processChargeFinish(false)
 	}
 }
 
@@ -448,7 +555,8 @@ func (c *Client) processChargeStart() {
 	}()
 }
 
-func (c *Client) processChargeEnd() {
+// processChargeFinish 处理充电结束流程。isComplete=true 表示真正充满（Complete 状态）。
+func (c *Client) processChargeFinish(isComplete bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -474,7 +582,7 @@ func (c *Client) processChargeEnd() {
 			if ch.ID != c.lastChargeID && ch.ID != 0 && !ch.EndDate.IsZero() {
 				log.Printf("✅ [充电重试] 成功捕获新数据! ID: %d", ch.ID)
 				c.lastChargeID = ch.ID
-				c.doChargeNotification(ch, c.lastChargingState)
+				c.doChargeNotification(ch, isComplete)
 				return true
 			}
 
@@ -487,11 +595,11 @@ func (c *Client) processChargeEnd() {
 	// 如果直接查到了新 ID
 	log.Printf("🚀 [充电检查] 直接捕获新数据: ID %d", charge.ID)
 	c.lastChargeID = charge.ID
-	c.doChargeNotification(charge, c.lastChargingState)
+	c.doChargeNotification(charge, isComplete)
 }
 
-// 充电结束通知 - 优化类型判断。state 由调用方传入，调用方需持有 c.mu。
-func (c *Client) doChargeNotification(charge *models.Charge, state string) {
+// 充电结束通知。isComplete=true 表示充满，推送专用"已充满"文案；调用方需持有 c.mu。
+func (c *Client) doChargeNotification(charge *models.Charge, isComplete bool) {
 	chargeType := c.getChargeType(charge)
 
 	content := fmt.Sprintf(`时间: %s→%s | 历时: %s
@@ -504,13 +612,20 @@ func (c *Client) doChargeNotification(charge *models.Charge, state string) {
 		float64(charge.StartBatteryLevel), float64(charge.EndBatteryLevel), float64(charge.EndBatteryLevel-charge.StartBatteryLevel),
 	)
 
-	title := fmt.Sprintf("🚗 %s 充电%s 🔋", c.carName, getChargeState(state))
+	var title, logTag string
+	if isComplete && c.cfg.FullChargeNotifyEnabled {
+		title = fmt.Sprintf("🔋 %s 已充满 ✅", c.carName)
+		logTag = "充满电通知"
+	} else {
+		title = fmt.Sprintf("🚗 %s 充电%s 🔋", c.carName, getChargeState(c.lastChargingState))
+		logTag = "充电通知"
+	}
 
 	go func() {
 		if err := notifier.SendNotification(c.cfg.APIToken, title, content); err != nil {
-			log.Printf("❌ 充电通知推送失败: %v", err)
+			log.Printf("❌ %s推送失败: %v", logTag, err)
 		} else {
-			log.Printf("✅ 充电通知已推送 (ID: %d)", charge.ID)
+			log.Printf("✅ %s已推送 (ID: %d)", logTag, charge.ID)
 		}
 	}()
 }
