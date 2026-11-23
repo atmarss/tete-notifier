@@ -1,0 +1,21 @@
+services:
+  tete-notifier-1:
+    image: atmarss/tete-notifier:latest
+    restart: always
+    environment:
+      - API_TOKEN= #输入特特管家的完整推送API URL
+      - DATABASE_HOST=database
+      - DATABASE_USER=teslamate
+      - DATABASE_PASS= #输入数据库的用户密码
+      - DATABASE_NAME=teslamate
+      - MQTT_HOST=mosquitto
+      - CAR_ID=1 #车辆ID，默认为1
+      - PUSH_DEBOUNCE_SECONDS=5 #推送防抖动初始时间（秒）
+      - ENABLE_START_NOTIFY=true #车辆启动通知开关(P->D持续D档)，默认true
+      - START_CONFIRM_SECONDS=10 #P->D后需持续D档的确认秒数，默认10
+      - START_NOTIFY_COOLDOWN_SECONDS=60 #启动通知冷却时间（秒），默认60
+      - ENABLE_DOOR_NOTIFY=true #车门打开通知开关，默认true
+      - DOOR_NOTIFY_COOLDOWN_SECONDS=60 #开门通知冷却时间（秒），默认60
+    depends_on:
+      - database
+      - mosquitto
