@@ -15,6 +15,9 @@ type Payload struct {
 	Content string `json:"content"`
 }
 
+// TitlePrefix 通知标题前缀，用于在多个项目间快速区分消息来源。
+const TitlePrefix = "【专属汽车管】"
+
 // client 使用带超时的独立客户端，避免 http.Post 默认无超时导致协程永久阻塞。
 var client = &http.Client{Timeout: 10 * time.Second}
 
@@ -27,7 +30,7 @@ func SendNotification(apiEndpoint, title, content string) (err error) {
 		}
 	}()
 	payload := Payload{
-		Title:   title,
+		Title:   TitlePrefix + title,
 		Content: content,
 	}
 
