@@ -26,16 +26,6 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Diagnose Docker Hub token
-        run: |
-          echo "token length: ${#DH_TOKEN}"
-          code=$(curl -s -o /tmp/userinfo.json -w "%{http_code}" -H "Authorization: Bearer ${DH_TOKEN}" https://hub.docker.com/v2/userinfo/)
-          echo "userinfo HTTP: $code"
-          cat /tmp/userinfo.json
-          echo
-        env:
-          DH_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
