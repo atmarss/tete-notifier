@@ -14,7 +14,7 @@
 
 - 行程、充电信息自动推送通知
 - 车辆启动通知：挡位由 P 挡切换到 D 挡，且持续保持 D 挡一段时间（默认 10 秒）后推送，避免误触发
-- 车门打开通知：主驾车门由关闭变为打开时推送，附带当前电量与表显续航
+- 车门打开通知：车辆**长时间处于 P 档停放**后，主驾车门由关闭变为打开时推送（附带当前电量与表显续航）。刚停车时正常下车开门不推送，避免误报；P 档持续时间阈值可通过 `DOOR_NOTIFY_P_DURATION_SECONDS` 调整（默认 300 秒）
 - 包含行驶时间、距离、电量变化等详细信息
 - 集成到现有的 Teslamate docker-compose 环境中
 - 轻量级，资源占用低
@@ -53,6 +53,7 @@
          - START_NOTIFY_COOLDOWN_SECONDS=60 #启动通知冷却时间（秒） 默认60
          - ENABLE_DOOR_NOTIFY=true #车门打开通知开关，默认true
          - DOOR_NOTIFY_COOLDOWN_SECONDS=60 #开门通知冷却时间（秒），默认60
+         - DOOR_NOTIFY_P_DURATION_SECONDS=300 #持续P档多久后开门才通知（秒），默认300，避免刚停车开门误报
        depends_on:
          - database #依赖数据库服务，同上HOST
          - mosquitto #依赖MQTT服务，同上HOST
@@ -77,6 +78,7 @@
    | START_NOTIFY_COOLDOWN_SECONDS | 启动通知冷却时间（秒），避免重复推送 | 否 | 60 |
    | ENABLE_DOOR_NOTIFY | 车门打开时是否推送通知 | 否 | true |
    | DOOR_NOTIFY_COOLDOWN_SECONDS | 开门通知冷却时间（秒），避免重复推送 | 否 | 60 |
+   | DOOR_NOTIFY_P_DURATION_SECONDS | 需持续 P 档多久后开门才通知（秒），避免刚停车正常下车误报 | 否 | 300 |
 
 3. **启动服务**
 
@@ -127,6 +129,7 @@ Docker Hub 用户名已固定为 `atmarss`，无需额外配置。若你改用�
 - `v1.0.1` - 移除哨兵通知，新增充电开始通知，调整通知内容样式，优化推送逻辑
 - `v1.0.2` - 调整了通知中电量变化的格式（+5.0% —> +5%）
 - `v1.1.0` - 新增车辆启动通知（P→D 持续 D 档 10 秒后推送）、车门打开通知；修复并发数据竞争、防抖计时器未复位、推送无超时等 BUG
+- `本地增强` - 通知标题统一加「专属汽车管家」前缀；车门通知改为仅长时间 P 档停放后开门才推送（可配置 `DOOR_NOTIFY_P_DURATION_SECONDS`）
 
 ## 技术栈
 

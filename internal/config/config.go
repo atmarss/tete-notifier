@@ -28,8 +28,9 @@ type Config struct {
 	StartConfirmSeconds    int  // P->D 后需持续 D 档的确认秒数
 
 	// 车门打开通知
-	DoorNotifyEnabled     bool // 是否开启车门打开通知
-	DoorNotifyCooldownSec int  // 开门通知冷却时间，避免短时间内重复推送
+	DoorNotifyEnabled      bool // 是否开启车门打开通知
+	DoorNotifyCooldownSec  int  // 开门通知冷却时间，避免短时间内重复推送
+	DoorNotifyPDurationSec int  // 需持续 P 档多久后开门才通知（秒），避免刚停车正常下车误报
 }
 
 func Load() *Config {
@@ -54,6 +55,7 @@ func Load() *Config {
 		StartConfirmSeconds:    mustInt(os.Getenv("START_CONFIRM_SECONDS"), 10),
 		DoorNotifyEnabled:      mustBool(os.Getenv("ENABLE_DOOR_NOTIFY"), true),
 		DoorNotifyCooldownSec:  mustInt(os.Getenv("DOOR_NOTIFY_COOLDOWN_SECONDS"), 60),
+		DoorNotifyPDurationSec: mustInt(os.Getenv("DOOR_NOTIFY_P_DURATION_SECONDS"), 300),
 	}
 }
 

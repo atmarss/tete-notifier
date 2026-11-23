@@ -16,6 +16,7 @@ services:
       - START_NOTIFY_COOLDOWN_SECONDS=60 #启动通知冷却时间（秒），默认60
       - ENABLE_DOOR_NOTIFY=true #车门打开通知开关，默认true
       - DOOR_NOTIFY_COOLDOWN_SECONDS=60 #开门通知冷却时间（秒），默认60
+      - DOOR_NOTIFY_P_DURATION_SECONDS=300 #持续P档多久后开门才通知（秒），默认300，避免刚停车开门误报
     depends_on:
       - database
       - mosquitto

@@ -35,6 +35,7 @@ type Client struct {
 
 	lastStartNotifyTime time.Time // 上次启动通知时间，用于冷却控制
 	lastDoorNotifyTime  time.Time // 上次车门通知时间，用于冷却控制
+	pGearSince          time.Time // 进入 P 档的时间，用于判断"长时间停放"
 
 	mu                sync.Mutex
 	retryMu           sync.Mutex // 单独保护重试计数，避免与 c.mu 死锁
@@ -152,6 +153,14 @@ func (c *Client) messageHandler(client mqtt.Client, msg mqtt.Message) {
 		if prev != payload {
 			c.lastShiftState = payload
 			isDrive = true
+		}
+		// 跟踪进入 P 档的时间：从非 P 切入 P，或首次收到 P（ MQTT retained ），重新开始计时
+		if payload == "P" {
+			if prev != "P" || c.pGearSince.IsZero() {
+				c.pGearSince = time.Now()
+			}
+		} else {
+			c.pGearSince = time.Time{}
 		}
 		// 车辆启动判定：P 档 -> D 档后，启动确认计时器
 		if prev == "P" && payload == "D" {
@@ -328,6 +337,18 @@ func (c *Client) processDoorOpen() {
 	defer c.mu.Unlock()
 
 	now := time.Now()
+
+	// 仅"长时间 P 档后开门"才通知：刚停车（P 档未达阈值）或行驶中开门都不推送
+	pDuration := time.Duration(0)
+	if !c.pGearSince.IsZero() {
+		pDuration = now.Sub(c.pGearSince)
+	}
+	if c.lastShiftState != "P" || pDuration < time.Duration(c.cfg.DoorNotifyPDurationSec)*time.Second {
+		log.Printf("[开门通知] 非长时间 P 档（档位 %s，P 档持续 %.0fs < %ds），跳过推送",
+			c.lastShiftState, pDuration.Seconds(), c.cfg.DoorNotifyPDurationSec)
+		return
+	}
+
 	if !c.lastDoorNotifyTime.IsZero() &&
 		now.Sub(c.lastDoorNotifyTime) < time.Duration(c.cfg.DoorNotifyCooldownSec)*time.Second {
 		log.Printf("[开门通知] 冷却期内跳过推送 (距上次 %.0fs)",
