@@ -62,19 +62,33 @@ func GetCarName(carID int) (string, error) {
 
 type DriveWithSOC struct {
 	models.Drive
-	StartSOC float64 `gorm:"column:start_soc"`
-	EndSOC   float64 `gorm:"column:end_soc"`
+	StartSOC         float64 `gorm:"column:start_soc"`
+	EndSOC           float64 `gorm:"column:end_soc"`
+	StartGeofence    *string `gorm:"column:start_geofence_name"` // 始发地围栏名（如"家""公司"）
+	StartAddrCity    *string `gorm:"column:start_addr_city"`     // 始发地城市
+	StartAddrRoad    *string `gorm:"column:start_addr_road"`     // 始发地道路
+	StartAddrName    *string `gorm:"column:start_addr_name"`     // 始发地地点名
+	StartAddrHouse   *string `gorm:"column:start_addr_house"`    // 始发地门牌号
+	StartAddrDisplay *string `gorm:"column:start_addr_display"`  // 始发地完整地址
 }
 
 func GetLatestDrive(carID int) (*DriveWithSOC, error) {
 	var result DriveWithSOC
 
 	err := DB.Table("drives d").
-		Select(`d.*, 
+		Select(`d.*,
 				COALESCE(start_pos.usable_battery_level, start_pos.battery_level, 0) as start_soc,
-				COALESCE(end_pos.usable_battery_level, end_pos.battery_level, 0) as end_soc`).
+				COALESCE(end_pos.usable_battery_level, end_pos.battery_level, 0) as end_soc,
+				start_geo.name as start_geofence_name,
+				start_addr.city as start_addr_city,
+				start_addr.road as start_addr_road,
+				start_addr.name as start_addr_name,
+				start_addr.house_number as start_addr_house,
+				start_addr.display_name as start_addr_display`).
 		Joins("LEFT JOIN positions start_pos ON d.start_position_id = start_pos.id").
 		Joins("LEFT JOIN positions end_pos ON d.end_position_id = end_pos.id").
+		Joins("LEFT JOIN geofences start_geo ON d.start_geofence_id = start_geo.id").
+		Joins("LEFT JOIN addresses start_addr ON d.start_address_id = start_addr.id").
 		Where("d.car_id = ?", carID).
 		Order("d.id desc").
 		First(&result).Error

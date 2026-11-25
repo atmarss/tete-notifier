@@ -39,6 +39,9 @@ type Config struct {
 	UnlockNotifyEnabled     bool
 	UnlockNotifyDelaySec    int // 检测到未锁后持续多久复核（秒）
 	UnlockNotifyCooldownSec int // 未锁通知冷却时间（秒）
+
+	// 行程通知始发地：从 Teslamate 的 geofences / addresses 读取
+	TripOriginEnabled bool // 是否在行程通知中显示始发地
 }
 
 func Load() *Config {
@@ -68,6 +71,7 @@ func Load() *Config {
 		UnlockNotifyEnabled:     mustBool(os.Getenv("ENABLE_UNLOCK_NOTIFY"), true),
 		UnlockNotifyDelaySec:    mustInt(os.Getenv("UNLOCK_NOTIFY_DELAY_SECONDS"), 120),
 		UnlockNotifyCooldownSec: mustInt(os.Getenv("UNLOCK_NOTIFY_COOLDOWN_SECONDS"), 600),
+		TripOriginEnabled:       mustBool(os.Getenv("ENABLE_TRIP_ORIGIN"), true),
 	}
 }
 
