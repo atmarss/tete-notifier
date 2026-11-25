@@ -729,9 +729,9 @@ func (c *Client) tryWithBackoffLocked(retryCount *int, maxRetries int, baseDelay
 	})
 }
 
-// formatTripOrigin 格式化行程始发地：优先地理围栏名（如"家""公司"），
-// 其次拼接地名/城市/道路/门牌，最后用完整地址兜底（过长则截断）。取不到时返回空串。
-func formatTripOrigin(result *db.DriveWithSOC) string {
+// formatPlace 把一个地点格式化为可读文本：优先地理围栏名（如"家""公司"），
+// 其次拼接地名/城市/道路/门牌，最后用完整地址兜底（按 rune 截断避免中文乱码）。取不到返回空串。
+func formatPlace(geofence, name, city, road, house, display *string) string {
 	trim := func(s *string) string {
 		if s == nil {
 			return ""
@@ -740,16 +740,16 @@ func formatTripOrigin(result *db.DriveWithSOC) string {
 	}
 
 	// 1. 地理围栏名最直观
-	if name := trim(result.StartGeofence); name != "" {
-		return name
+	if v := trim(geofence); v != "" {
+		return v
 	}
 
 	// 2. 结构化地址：地点名 · 城市+道路+门牌
 	parts := make([]string, 0, 2)
-	if name := trim(result.StartAddrName); name != "" {
-		parts = append(parts, name)
+	if v := trim(name); v != "" {
+		parts = append(parts, v)
 	}
-	addr := trim(result.StartAddrCity) + trim(result.StartAddrRoad) + trim(result.StartAddrHouse)
+	addr := trim(city) + trim(road) + trim(house)
 	if addr != "" {
 		parts = append(parts, addr)
 	}
@@ -757,16 +757,33 @@ func formatTripOrigin(result *db.DriveWithSOC) string {
 		return strings.Join(parts, " · ")
 	}
 
-	// 3. 完整地址兜底（Nominatim 的 display_name 通常很长，按 rune 截断避免中文乱码）
-	display := trim(result.StartAddrDisplay)
-	if display == "" {
+	// 3. 完整地址兜底（Nominatim 的 display_name 通常很长）
+	if v := trim(display); v != "" {
+		runes := []rune(v)
+		if len(runes) > 40 {
+			return string(runes[:40]) + "…"
+		}
+		return v
+	}
+	return ""
+}
+
+// formatTripRoute 生成"始: X → 终: Y"一行。任一端取不到时用「?」占位，两端都取不到返回空串。
+func formatTripRoute(result *db.DriveWithSOC) string {
+	start := formatPlace(result.StartGeofence, result.StartAddrName, result.StartAddrCity,
+		result.StartAddrRoad, result.StartAddrHouse, result.StartAddrDisplay)
+	end := formatPlace(result.EndGeofence, result.EndAddrName, result.EndAddrCity,
+		result.EndAddrRoad, result.EndAddrHouse, result.EndAddrDisplay)
+	if start == "" && end == "" {
 		return ""
 	}
-	runes := []rune(display)
-	if len(runes) > 40 {
-		return string(runes[:40]) + "…"
+	if start == "" {
+		start = "?"
 	}
-	return display
+	if end == "" {
+		end = "?"
+	}
+	return fmt.Sprintf("始: %s → 终: %s", start, end)
 }
 
 // 行程通知内容。调用方需持有 c.mu。
@@ -780,11 +797,11 @@ func (c *Client) doTripNotification(result *db.DriveWithSOC) {
 	}
 	avgSpeed := calculateAvgSpeed(drive.Distance, drive.DurationMin)
 
-	// 始发地（可关闭；Teslamate 未开启反向地理编码且无围栏时自动省略该行）
-	originLine := ""
+	// 起终点路线（可关闭；两端都取不到时自动省略该行）
+	routeLine := ""
 	if c.cfg.TripOriginEnabled {
-		if origin := formatTripOrigin(result); origin != "" {
-			originLine = fmt.Sprintf("始发地: %s\n", origin)
+		if route := formatTripRoute(result); route != "" {
+			routeLine = fmt.Sprintf("%s\n", route)
 		}
 	}
 
@@ -793,7 +810,7 @@ func (c *Client) doTripNotification(result *db.DriveWithSOC) {
 表显: %.0f→%.0f km (-%.1f km)
 电量: %.0f→%.0f%% (-%.0f%%) 达成率: %.1f%%`,
 		drive.StartDate.Local().Format("15:04"), drive.EndDate.Local().Format("15:04"), formatDuration(drive.DurationMin),
-		originLine,
+		routeLine,
 		drive.Distance, avgSpeed,
 		drive.StartIdealRangeKM, drive.EndIdealRangeKM, rangeReduced,
 		result.StartSOC, result.EndSOC, socUsed, achieveRate,

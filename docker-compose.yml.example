@@ -21,7 +21,7 @@ services:
       - ENABLE_UNLOCK_NOTIFY=true #忘记锁车通知开关，默认true
       - UNLOCK_NOTIFY_DELAY_SECONDS=120 #未锁持续多久后复核（秒），默认120
       - UNLOCK_NOTIFY_COOLDOWN_SECONDS=600 #忘锁通知冷却时间（秒），默认600
-      - ENABLE_TRIP_ORIGIN=true #行程通知显示始发地，默认true（依赖Teslamate围栏/地理编码）
+      - ENABLE_TRIP_ORIGIN=true #行程通知显示"始: X → 终: Y"，默认true（依赖Teslamate围栏/地理编码）
     depends_on:
       - database
       - mosquitto

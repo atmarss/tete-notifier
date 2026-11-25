@@ -40,8 +40,8 @@ type Config struct {
 	UnlockNotifyDelaySec    int // 检测到未锁后持续多久复核（秒）
 	UnlockNotifyCooldownSec int // 未锁通知冷却时间（秒）
 
-	// 行程通知始发地：从 Teslamate 的 geofences / addresses 读取
-	TripOriginEnabled bool // 是否在行程通知中显示始发地
+	// 行程通知起终点：从 Teslamate 的 geofences / addresses 读取
+	TripOriginEnabled bool // 是否在行程通知中显示"始: X → 终: Y"
 }
 
 func Load() *Config {
